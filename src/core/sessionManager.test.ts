@@ -105,4 +105,58 @@ describe("SessionManager", () => {
     await Promise.resolve();
     expect(stopped).toHaveBeenCalledWith({ reason: "user" });
   });
+
+  // These three cover the actual activation-pipeline fix: on a runtime
+  // where the wake-word/STT providers are silently mocked (no
+  // SpeechRecognition — the real-world WebView2 case that motivated this),
+  // these are the only way to drive VEYRA at all, so they must work
+  // exactly like a real wake word / final transcript would.
+
+  it("activateManually() drives the same SLEEPING -> LISTENING path as a spoken wake word", async () => {
+    const activated = vi.fn();
+    eventBus.on("assistant.activated", activated);
+
+    await session.activateManually();
+    expect(veyraStateMachine.state).toBe("LISTENING");
+    expect(stt.isListening).toBe(true);
+    expect(activated).toHaveBeenCalledWith({ via: "manual" });
+  });
+
+  it("activateManually() is a no-op when VEYRA isn't SLEEPING", async () => {
+    await session.activateManually();
+    expect(veyraStateMachine.state).toBe("LISTENING");
+
+    await session.activateManually(); // already active; must not re-trigger
+    expect(veyraStateMachine.state).toBe("LISTENING");
+  });
+
+  it("stopManually() returns to SLEEPING from any active state", async () => {
+    await session.activateManually();
+    await session.stopManually();
+    expect(veyraStateMachine.state).toBe("SLEEPING");
+    expect(wake.isListening).toBe(true);
+  });
+
+  it("submitTypedCommand() feeds text through the LISTENING pipeline like a spoken final transcript", async () => {
+    llm.nextResponse = "Typed answer.";
+    await session.activateManually();
+
+    // Not awaited directly: like `stt.simulateFinal()` elsewhere in this
+    // file, the full chain doesn't settle until TTS playback finishes
+    // (`tts.completeSpeaking()`, unused here), so this only flushes far
+    // enough to observe the SPEAKING transition.
+    void session.submitTypedCommand("what's my cpu usage");
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(veyraStateMachine.state).toBe("SPEAKING");
+    expect(tts.lastSpoken?.text).toBe("Typed answer.");
+  });
+
+  it("submitTypedCommand() is ignored outside LISTENING", async () => {
+    // Still SLEEPING: nothing to submit into.
+    await session.submitTypedCommand("hello");
+    expect(veyraStateMachine.state).toBe("SLEEPING");
+  });
 });

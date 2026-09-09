@@ -5,6 +5,7 @@
  */
 
 import type { WakeCallback, WakeWordProvider } from "../types";
+import { logger } from "../../logging/logger";
 
 export class MockWakeWordProvider implements WakeWordProvider {
   readonly id = "mock-wake-word";
@@ -24,6 +25,13 @@ export class MockWakeWordProvider implements WakeWordProvider {
 
   async start(): Promise<void> {
     this._isListening = true;
+    // This provider never listens to real audio — flagged loudly so it's
+    // never mistaken for a working wake-word engine at runtime.
+    logger.warn(
+      "WAKE",
+      "Manual-trigger provider active: saying \"Veyra\" will NOT activate VEYRA. " +
+        "Use the Activate button or the global hotkey instead."
+    );
   }
 
   async stop(): Promise<void> {

@@ -9,6 +9,7 @@ import { AvatarScene } from "../avatar/AvatarScene";
 import { StatusDisplay } from "./StatusDisplay";
 import { SettingsPanel } from "./SettingsPanel";
 import { PerformanceOverlay } from "./PerformanceOverlay";
+import { ActivationControls } from "./ActivationControls";
 import { useSettingsStore } from "../settings/settingsStore";
 
 type PanelId = "settings" | null;
@@ -22,6 +23,7 @@ export function MainScreen() {
       <div className="veyra-avatar-stage">
         <AvatarScene />
         <StatusDisplay />
+        <ActivationControls />
         {performanceOverlayEnabled && <PerformanceOverlay />}
         {openPanel === "settings" && <SettingsPanel onClose={() => setOpenPanel(null)} />}
       </div>

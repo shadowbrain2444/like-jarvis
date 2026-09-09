@@ -16,6 +16,7 @@
 
 import type { WakeCallback, WakeWordProvider } from "../types";
 import { getSpeechRecognitionCtor } from "./webSpeechSupport";
+import { logger } from "../../logging/logger";
 
 function normalize(text: string): string {
   return text
@@ -44,11 +45,14 @@ export class WebSpeechWakeWordProvider implements WakeWordProvider {
   }
 
   async start(): Promise<void> {
+    logger.info("WAKE", "Wake engine initializing...");
     const Ctor = getSpeechRecognitionCtor();
     if (!Ctor) {
-      throw new Error(
-        "[VEYRA][WAKE] speech recognition is not available in this runtime"
-      );
+      const message =
+        "SpeechRecognition API is not available in this WebView (WebView2 does not " +
+        "implement it) — this provider cannot listen for a wake word here";
+      logger.error("WAKE", message);
+      throw new Error(`[VEYRA][WAKE] ${message}`);
     }
     this.shouldRestart = true;
     this.attach(new Ctor());
@@ -84,10 +88,12 @@ export class WebSpeechWakeWordProvider implements WakeWordProvider {
       }
     };
     recognition.onerror = (event) => {
-      console.warn("[VEYRA][WAKE] recognition error:", event.error);
+      logger.warn("WAKE", "recognition error", event.error);
     };
     recognition.onstart = () => {
       this._isListening = true;
+      logger.info("WAKE", "Wake engine started");
+      logger.info("WAKE", `Listening for wake phrase: ${this.wakePhrases.join(", ")}`);
     };
     recognition.onend = () => {
       this._isListening = false;
@@ -108,11 +114,13 @@ export class WebSpeechWakeWordProvider implements WakeWordProvider {
     if (normalized.length === 0) return;
 
     if (normalized.includes(normalize(this.stopPhrase))) {
+      logger.info("WAKE", "Stop phrase detected: stop veyra");
       this.stopCallbacks.forEach((cb) => cb());
       return;
     }
     for (const phrase of this.wakePhrases) {
       if (normalized.includes(normalize(phrase))) {
+        logger.info("WAKE", `Wake phrase detected: ${phrase}`);
         this.wakeCallbacks.forEach((cb) => cb(phrase));
         return;
       }

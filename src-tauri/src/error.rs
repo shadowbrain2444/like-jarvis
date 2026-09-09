@@ -11,7 +11,15 @@ pub enum VeyraError {
     #[error("permission denied: {0}")]
     PermissionDenied(String),
 
+    // Only ever constructed by the non-Windows fallback in
+    // `commands/window_control.rs` (window control is Windows-only via
+    // `windows-rs`/user32; other targets return this instead). That makes
+    // it legitimately unconstructed dead code on an actual Windows build,
+    // which only compiles the `#[cfg(target_os = "windows")]` branch —
+    // the variant still needs to exist so the crate builds at all on
+    // Linux/macOS during development (see VEYRA_SETUP.md).
     #[error("not supported on this platform: {0}")]
+    #[allow(dead_code)]
     NotSupported(String),
 
     #[error("not found: {0}")]

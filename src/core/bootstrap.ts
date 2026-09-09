@@ -17,12 +17,26 @@ import { WebSpeechTTSProvider } from "../voice/providers/WebSpeechTTSProvider";
 import { MockTTSProvider } from "../voice/providers/MockTTSProvider";
 import type { VeyraSettings } from "../settings/settingsStore";
 import { registerBuiltinSkills } from "../tools";
-import { isSpeechRecognitionSupported } from "../voice/providers/webSpeechSupport";
+import {
+  isSpeechRecognitionSupported,
+  isSpeechSynthesisSupported,
+} from "../voice/providers/webSpeechSupport";
+import { eventBus } from "./eventBus";
+import { logger } from "../logging/logger";
 
 export function buildSessionManager(settings: VeyraSettings): SessionManager {
   registerBuiltinSkills();
 
   const speechAvailable = isSpeechRecognitionSupported();
+  const synthesisAvailable = isSpeechSynthesisSupported();
+  logger.info(
+    "VOICE",
+    `Runtime speech capability — SpeechRecognition: ${speechAvailable}, speechSynthesis: ${synthesisAvailable}`
+  );
+  eventBus.emit("voice.capability", {
+    speechRecognitionAvailable: speechAvailable,
+    speechSynthesisAvailable: synthesisAvailable,
+  });
 
   const wakeWordProvider =
     settings.wakeWordProviderId === "web-speech-wake-word" && speechAvailable

@@ -76,6 +76,25 @@ export class SessionManager {
     if (this.running) return;
     this.running = true;
 
+    // The single most important diagnostic line in this file: if the
+    // wake-word provider ever silently degrades to the manual-trigger mock
+    // (e.g. because the WebView doesn't implement SpeechRecognition — see
+    // `bootstrap.ts` and `VEYRA_TROUBLESHOOTING.md`), this makes it visible
+    // in the log immediately instead of the assistant just never activating.
+    logger.info(
+      "CORE",
+      `Voice providers selected — wake: "${this.wakeWordProvider.id}" (${this.wakeWordProvider.displayName}), ` +
+        `stt: "${this.sttProvider.id}" (${this.sttProvider.displayName}), ` +
+        `tts: "${this.ttsProvider.id}" (${this.ttsProvider.displayName})`
+    );
+    if (this.wakeWordProvider.id === "mock-wake-word") {
+      logger.warn(
+        "WAKE",
+        "Real wake-word listening is NOT active (using the manual-trigger fallback). " +
+          "Saying \"Veyra\" will do nothing — use activateManually() / the Activate button / the global hotkey instead."
+      );
+    }
+
     this.unsubscribers.push(
       this.wakeWordProvider.onWake((phrase) => this.handleWake(phrase)),
       this.wakeWordProvider.onStop(() => this.handleStopPhrase()),
@@ -83,12 +102,10 @@ export class SessionManager {
       this.sttProvider.onError((message) =>
         logger.warn("STT", "recognition error (non-fatal, listening continues)", message)
       ),
-      this.vad.onSpeechStart(() => this.handleBargeIn()),
-      eventBus.on("avatar.state_changed", ({ state }) => {
-        logger.info("CORE", `state -> ${state}`);
-      })
+      this.vad.onSpeechStart(() => this.handleBargeIn())
     );
 
+    logger.info("VOICE", "Initializing microphone...");
     try {
       await audioEngine.startCapture();
       this.micStarted = true;
@@ -99,7 +116,18 @@ export class SessionManager {
       logger.warn("VOICE", "microphone capture unavailable", err);
     }
 
-    await this.wakeWordProvider.start();
+    logger.info("WAKE", "Wake engine initializing...");
+    try {
+      await this.wakeWordProvider.start();
+      logger.info("WAKE", "Listening for wake phrase: veyra, wake up veyra");
+    } catch (err) {
+      logger.error("WAKE", "Wake engine failed to start", err);
+      eventBus.emit("system.error", {
+        scope: "wake-word",
+        message: err instanceof Error ? err.message : String(err),
+        recoverable: true,
+      });
+    }
   }
 
   async stop(): Promise<void> {
@@ -117,9 +145,25 @@ export class SessionManager {
   }
 
   private async handleWake(phrase: string): Promise<void> {
+    await this.activate("wake_word", phrase);
+  }
+
+  /**
+   * Public entry point for any non-voice activation trigger (the UI's
+   * Activate button, the global hotkey) — a real, working substitute for
+   * "say Veyra" on runtimes where wake-word listening can't run at all
+   * (see `bootstrap.ts`'s capability check). Goes through the exact same
+   * state-machine path as a detected wake word.
+   */
+  async activateManually(): Promise<void> {
+    await this.activate("manual", "manual-activation");
+  }
+
+  private async activate(via: "wake_word" | "manual", phrase: string): Promise<void> {
     if (currentState() !== "SLEEPING") return;
+    logger.info("WAKE", `Wake phrase detected: ${phrase}`);
     eventBus.emit("wake.detected", { phrase });
-    eventBus.emit("assistant.activated", { via: "wake_word" });
+    eventBus.emit("assistant.activated", { via });
     veyraStateMachine.activate(); // SLEEPING -> ACTIVE -> LISTENING
     // Only one WebSpeech recognition session runs at a time: hand off from
     // wake-word listening to command listening.
@@ -129,6 +173,25 @@ export class SessionManager {
 
   private async handleStopPhrase(): Promise<void> {
     await this.stopConversation("user");
+  }
+
+  /** Public entry point for the UI's Stop button / the global hotkey. */
+  async stopManually(): Promise<void> {
+    await this.stopConversation("user");
+  }
+
+  /**
+   * Feeds a typed command through exactly the same path a spoken final
+   * transcript would take — the fallback for runtimes where STT can't run
+   * (same capability gap as wake word; see `bootstrap.ts`). Only valid
+   * while LISTENING; call `activateManually()` first if VEYRA is asleep.
+   */
+  async submitTypedCommand(text: string): Promise<void> {
+    if (currentState() !== "LISTENING") {
+      logger.warn("CORE", "submitTypedCommand ignored: VEYRA is not currently LISTENING");
+      return;
+    }
+    await this.handleFinalTranscript(text);
   }
 
   private async handleBargeIn(): Promise<void> {

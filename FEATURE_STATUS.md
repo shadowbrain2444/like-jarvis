@@ -52,7 +52,13 @@ performance overlay
 
 ### Wake word system
 ✅ Deterministic state machine, all 8 states · ✅ both wake phrases + stop
-phrase · 🟡 "preferably local" — see locality note in
+phrase · 🟡 voice-triggered activation depends on the WebView implementing
+`SpeechRecognition`, which WebView2 does **not** — confirmed on a real
+Windows build. VEYRA detects this at startup and falls back to a fully
+functional manual-activation path instead (Activate button, global
+`Ctrl+Shift+V` hotkey, typed commands) rather than silently doing nothing;
+see `VEYRA_TROUBLESHOOTING.md` "Veyra doesn't wake the assistant" and
+`VEYRA_ARCHITECTURE.md` "Manual/hotkey activation." · 🟡 "preferably local" — see locality note in
 `VEYRA_ARCHITECTURE.md`; not a dedicated offline neural wake model
 
 ### Computer Control Engine

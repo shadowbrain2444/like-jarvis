@@ -5,6 +5,8 @@ import { buildSessionManager } from "./core/bootstrap";
 import { latencyMonitor } from "./performance/latencyMonitor";
 import type { SessionManager } from "./core/sessionManager";
 import { logger } from "./logging/logger";
+import { setActiveSession } from "./core/activeSession";
+import { registerActivationHotkey } from "./core/hotkey";
 
 export default function App() {
   const loaded = useSettingsStore((s) => s.loaded);
@@ -28,12 +30,28 @@ export default function App() {
     sessionRef.current?.stop();
     const session = buildSessionManager(settings);
     sessionRef.current = session;
+    setActiveSession(session);
     session.start().catch((err) => {
       if (!cancelled) logger.error("CORE", "failed to start session", err);
     });
 
+    // Always registered, independent of which wake-word provider is
+    // active: the real, working fallback for "say Veyra" when the WebView
+    // can't do speech recognition at all (see hotkey.ts).
+    let unregisterHotkey: (() => void) | null = null;
+    registerActivationHotkey(() => {
+      session.activateManually().catch((err) =>
+        logger.error("CORE", "manual activation via hotkey failed", err)
+      );
+    }).then((unregister) => {
+      if (cancelled) unregister();
+      else unregisterHotkey = unregister;
+    });
+
     return () => {
       cancelled = true;
+      unregisterHotkey?.();
+      setActiveSession(null);
       session.stop();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps

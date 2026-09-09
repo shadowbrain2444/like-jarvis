@@ -115,13 +115,25 @@ Windows. Two ways to get a real installer:
 1. Launch VEYRA (`npm run tauri dev` or the installed app).
 2. Grant microphone access when the OS prompts (Windows Settings → Privacy
    → Microphone, if it doesn't prompt automatically).
-3. Say "Veyra" or "Wake up Veyra" — the avatar should transition from
-   Sleeping to Listening.
-4. Say a command, e.g. "what's my CPU usage" — VEYRA calls the
-   `get_system_info` tool and speaks the answer back.
-5. Say "Stop Veyra" any time to return to Sleeping.
+3. Check the log line `[VEYRA][CORE] Voice providers selected — wake:
+   "..."`. **On Windows/WebView2, this will very likely say
+   `"mock-wake-word"`** — WebView2 doesn't implement browser speech
+   recognition (see `VEYRA_TROUBLESHOOTING.md`) — in which case skip to
+   step 3b. If it says `"web-speech-wake-word"`, try step 3a first.
+   - **3a (voice):** Say "Veyra" or "Wake up Veyra" — the avatar should
+     transition from Sleeping to Listening.
+   - **3b (manual/hotkey — the reliable path on Windows today):** Click
+     "Activate VEYRA" on screen, or press `Ctrl+Shift+V` from anywhere.
+     Same effect as saying the wake word.
+4. Give a command — say it (if STT is working) or type it into the text
+   box that appears when speech recognition isn't available, e.g. "what's
+   my CPU usage" — VEYRA calls the `get_system_info` tool and speaks the
+   answer back.
+5. Say "Stop Veyra," press `Ctrl+Shift+V` again, or click "Stop" any time
+   to return to Sleeping.
 6. Open Settings (bottom bar) to configure a real AI provider, pick a
-   voice, adjust rate/volume, and review/grant tool permissions.
+   voice, adjust rate/volume, review/grant tool permissions, and check
+   live microphone diagnostics under Developer.
 
 If no Anthropic API key is configured, step 4 still works end-to-end
 against `MockLLMProvider`'s scripted response — useful for confirming the

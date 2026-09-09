@@ -63,6 +63,16 @@ export interface VeyraEventMap {
   "performance.metric": { metric: string; valueMs: number };
 
   "system.error": { scope: string; message: string; recoverable: boolean };
+
+  /**
+   * Emitted once per session build (`core/bootstrap.ts`) reporting whether
+   * the runtime actually implements the Web Speech APIs voice depends on —
+   * e.g. WebView2 has no `SpeechRecognition`, so this comes back
+   * `speechRecognitionAvailable: false` there even though `speechSynthesis`
+   * still works. The UI uses this to show the manual-activation fallback
+   * instead of silently doing nothing when someone says "Veyra".
+   */
+  "voice.capability": { speechRecognitionAvailable: boolean; speechSynthesisAvailable: boolean };
 }
 
 export type VeyraEventName = keyof VeyraEventMap;

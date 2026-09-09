@@ -30,6 +30,13 @@ pub fn run() {
                 .level(log::LevelFilter::Info)
                 .build(),
         )
+        // Global activation hotkey (default Ctrl+Shift+V, see
+        // `src/core/hotkey.ts`): the real, working fallback for runtimes
+        // where the WebView doesn't implement SpeechRecognition and
+        // saying "Veyra" can't be detected at all. Registration and the
+        // press handler both live in the frontend via this plugin's JS
+        // API — no Rust-side handler needed.
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .setup(|app| {
             let db = Db::open(None).expect("[VEYRA][DB] failed to open local database");
             app.manage(AppState { db: Arc::new(db) });

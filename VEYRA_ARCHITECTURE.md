@@ -114,6 +114,22 @@ window isn't caught until the response starts `SPEAKING` (at which point
 VAD-triggered barge-in catches it). This is a real, working design with a
 narrow, documented gap — not a stub.
 
+### Manual/hotkey activation (the actual default on Windows — see below)
+
+`SessionManager` exposes `activateManually()`, `stopManually()`, and
+`submitTypedCommand()` alongside the wake-word/STT-driven paths — not as
+optional extras, but because on the real shipping target (WebView2) they
+are, today, the *primary* way VEYRA activates at all (see "Why Web Speech
+API..." below for why). All three drive the exact same state-machine
+transitions and `AIOrchestrator`/tool-execution/TTS path a voice-driven
+turn would; nothing downstream of activation knows or cares which path
+triggered it. `App.tsx` wires `activateManually()` to both a global OS
+hotkey (`Ctrl+Shift+V` by default, `src/core/hotkey.ts`, via
+`tauri-plugin-global-shortcut`) and an on-screen "Activate VEYRA" button
+(`src/ui/ActivationControls.tsx`), and wires `submitTypedCommand()` to a
+text-input fallback shown whenever `voice.capability` reports STT is
+unavailable.
+
 ## Provider abstractions (spec section 4/33/34: "don't hardcode one provider")
 
 Every external capability is an interface first, concrete implementation
@@ -139,16 +155,32 @@ called out explicitly in the provider's own doc comment rather than
 claimed as fully local. `AnthropicProvider` is `"cloud"` and
 `requiresApiKey: true`.
 
-### Why Web Speech API as the default, no-API-key providers
+### Why Web Speech API as the default, no-API-key providers — and its real limit on Windows
 
 VEYRA needs to work the moment it's launched, with no signup and no paid
-API key. The WebView (WebView2 on Windows, Chromium-based) ships
-`SpeechRecognition` and `speechSynthesis` for free, with real streaming
-partial/final transcripts, voice selection, cancellation, and rate/volume
-control — genuinely functional, not a stub. Swapping in Porcupine for wake
-word, a cloud STT provider, or ElevenLabs for TTS is exactly what the
-provider interfaces exist for; none of it requires touching
-`SessionManager`, `AIOrchestrator`, or the avatar.
+API key. `speechSynthesis` (TTS) is genuinely well-supported in WebView2 —
+real OS voices, cancellation, rate/volume control, no stub. **`SpeechRecognition`
+(STT/wake-word) is not**: confirmed against a real Windows build, WebView2
+does not implement it at all (`window.SpeechRecognition` and
+`window.webkitSpeechRecognition` are both `undefined`) — this is a
+Chromium capability gated behind Google's own cloud infrastructure that
+generic Chromium embeddings, WebView2 included, don't have. An earlier
+version of this document claimed otherwise; it was wrong, and the fix in
+this section is what actually makes the pipeline work as a result.
+
+`core/bootstrap.ts` detects this at runtime
+(`isSpeechRecognitionSupported()`) and falls back to
+`MockWakeWordProvider`/`MockSTTProvider` — but unlike before, that
+fallback is no longer silent: `SessionManager.start()` logs which
+providers were actually selected (`Voice providers selected — wake:
+"..."`) and warns explicitly when the mock is in play, `bootstrap.ts`
+emits `voice.capability` on the event bus so the UI can react, and
+`SessionManager`'s manual/hotkey/typed-command entry points (above) are
+what actually let you use VEYRA when this fallback is active. Swapping in
+Porcupine or another true on-device wake-word engine, a cloud STT
+provider, or ElevenLabs for TTS remains exactly what the provider
+interfaces exist for; none of it requires touching `SessionManager`,
+`AIOrchestrator`, or the avatar.
 
 ## AI Orchestrator, Intent Router, Tool Registry (spec sections 3, 11, 17)
 

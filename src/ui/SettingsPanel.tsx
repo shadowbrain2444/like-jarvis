@@ -14,6 +14,7 @@ import { audioEngine } from "../voice/AudioEngine";
 import type { TTSVoiceInfo } from "../voice/types";
 import type { AudioDeviceInfo } from "../voice/types";
 import type { AuditEntry, PermissionScope } from "../core/backendTypes";
+import { MicDiagnostics } from "./MicDiagnostics";
 
 const DESTRUCTIVE_TOOLS = [
   "files.delete",
@@ -225,6 +226,11 @@ export function SettingsPanel({ onClose }: { onClose: () => void }) {
             checked={settings.performanceOverlayEnabled}
             onChange={(e) => update({ performanceOverlayEnabled: e.target.checked })}
           />
+        </div>
+
+        <div className="veyra-field">
+          <label className="veyra-field__label">Microphone diagnostics</label>
+          <MicDiagnostics />
         </div>
 
         <div className="veyra-field">

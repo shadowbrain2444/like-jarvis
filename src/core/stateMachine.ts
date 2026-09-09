@@ -11,6 +11,7 @@
  */
 
 import { eventBus } from "./eventBus";
+import { logger } from "../logging/logger";
 import type { VeyraState } from "./types";
 
 const TRANSITIONS: Record<VeyraState, readonly VeyraState[]> = {
@@ -47,7 +48,13 @@ export class VeyraStateMachine {
     if (!this.canTransition(to)) {
       throw new InvalidTransitionError(this._state, to);
     }
+    const from = this._state;
     this._state = to;
+    // Logged here (not by whoever calls activate()/stop()/etc.) so every
+    // transition is observable regardless of what's currently subscribed
+    // to the event bus — this is the one log line that would have made
+    // "VEYRA never leaves SLEEPING" immediately diagnosable.
+    logger.info("CORE", `State: ${from} -> ${to}`);
     eventBus.emit("avatar.state_changed", { state: to });
   }
 
@@ -98,7 +105,9 @@ export class VeyraStateMachine {
   }
 
   reset(): void {
+    const from = this._state;
     this._state = "SLEEPING";
+    if (from !== "SLEEPING") logger.info("CORE", `State: ${from} -> SLEEPING (reset)`);
     eventBus.emit("avatar.state_changed", { state: "SLEEPING" });
   }
 }
