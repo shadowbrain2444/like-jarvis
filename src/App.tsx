@@ -38,7 +38,7 @@ export default function App() {
     // Always registered, independent of which wake-word provider is
     // active: the real, working fallback for "say Veyra" when the WebView
     // can't do speech recognition at all (see hotkey.ts).
-    let unregisterHotkey: (() => void) | null = null;
+    let unregisterHotkey: (() => Promise<void>) | null = null;
     registerActivationHotkey(() => {
       session.activateManually().catch((err) =>
         logger.error("CORE", "manual activation via hotkey failed", err)

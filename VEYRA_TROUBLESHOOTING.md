@@ -142,6 +142,51 @@ Use `npm run tauri dev` for local development/testing on Linux (runs the
 app without producing an installer), and see `VEYRA_SETUP.md` → "Building
 the real Windows installer" for how to get an actual `.msi`/`.exe`.
 
+## `[plugin:vite:import-analysis] Failed to resolve import "@tauri-apps/plugin-global-shortcut"`
+
+This means the package is missing from your local `node_modules` even
+though it's declared in `package.json`/`package-lock.json` — Cargo
+auto-fetches new Rust dependencies on every build, but npm only updates
+`node_modules` when you explicitly run `npm install`. If you see the Rust
+side compile a plugin (e.g. `Compiling tauri-plugin-global-shortcut
+v2.3.2`) but the Vite frontend can't resolve its npm counterpart, that
+asymmetry is the tell: the Rust half auto-updated, the JS half didn't.
+
+Fix:
+
+```bash
+npm install
+npm ls @tauri-apps/plugin-global-shortcut   # should print the resolved version, no "(empty)"
+npm run tauri dev
+```
+
+If `npm install` reports no changes and `npm ls` still comes back empty,
+the local `node_modules` is corrupted rather than just stale — delete it
+and reinstall clean:
+
+```bash
+rm -rf node_modules      # Windows PowerShell: Remove-Item -Recurse -Force node_modules
+npm install
+```
+
+If it *still* fails after a clean install, check for a stale Vite
+dependency-optimizer cache next (rare, but distinct from the above):
+
+```bash
+rm -rf node_modules/.vite
+npm run tauri dev
+```
+
+This was verified end-to-end while fixing it: a from-scratch `npm
+install` against this repo's committed `package.json`/`package-lock.json`
+deterministically installs `@tauri-apps/plugin-global-shortcut@2.3.2`,
+and both `vite build` and a live `vite` dev server resolve
+`src/core/hotkey.ts`'s dynamic `import("@tauri-apps/plugin-global-shortcut")`
+without error — so if you still hit this after a clean install, something
+about your local environment (npm registry access, a corrupted global npm
+cache, an overly aggressive antivirus quarantining files under
+`node_modules`) is worth checking next.
+
 ## Tests fail with jsdom/`getUserMedia` errors
 
 If you see `TypeError: Cannot read properties of undefined (reading
