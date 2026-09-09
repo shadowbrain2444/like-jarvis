@@ -1,0 +1,58 @@
+/* VEYRA visual identity (spec section 23): maroon / black / white, premium,
+   minimal, cinematic. Single source of truth for the palette — the avatar
+   scene's Three.js colors in `avatar/theme.ts` are kept in sync by hand
+   since they live in a different color pipeline (sRGB hex vs CSS). */
+
+:root {
+  --veyra-black: #0a0505;
+  --veyra-black-2: #140a0c;
+  --veyra-black-3: #1d1113;
+  --veyra-maroon-deep: #4a0f1f;
+  --veyra-maroon: #7d1935;
+  --veyra-maroon-bright: #b02b47;
+  --veyra-white: #f5eeee;
+  --veyra-white-dim: #cbb8ba;
+  --veyra-border: rgba(245, 238, 238, 0.08);
+  --veyra-glass: rgba(20, 10, 12, 0.55);
+
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: radial-gradient(ellipse at 50% 30%, var(--veyra-black-2) 0%, var(--veyra-black) 70%);
+  color: var(--veyra-white);
+  font-family:
+    "Segoe UI",
+    -apple-system,
+    BlinkMacSystemFont,
+    system-ui,
+    sans-serif;
+  overflow: hidden;
+  user-select: none;
+}
+
+button {
+  font-family: inherit;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--veyra-maroon);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
