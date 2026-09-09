@@ -9,6 +9,8 @@
     "opener:allow-open-path",
     "opener:allow-open-url",
     "global-shortcut:allow-register",
-    "global-shortcut:allow-unregister"
+    "global-shortcut:allow-unregister",
+    "global-shortcut:allow-is-registered",
+    "log:default"
   ]
 }

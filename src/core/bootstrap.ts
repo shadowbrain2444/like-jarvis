@@ -15,6 +15,8 @@ import { WebSpeechSTTProvider } from "../voice/providers/WebSpeechSTTProvider";
 import { MockSTTProvider } from "../voice/providers/MockSTTProvider";
 import { WebSpeechTTSProvider } from "../voice/providers/WebSpeechTTSProvider";
 import { MockTTSProvider } from "../voice/providers/MockTTSProvider";
+import type { LLMProvider } from "../ai/types";
+import type { STTProvider, TTSProvider, WakeWordProvider } from "../voice/types";
 import type { VeyraSettings } from "../settings/settingsStore";
 import { registerBuiltinSkills } from "../tools";
 import {
@@ -23,6 +25,46 @@ import {
 } from "../voice/providers/webSpeechSupport";
 import { eventBus } from "./eventBus";
 import { logger } from "../logging/logger";
+
+export interface SelectedProviders {
+  wakeWordProvider: WakeWordProvider;
+  sttProvider: STTProvider;
+  ttsProvider: TTSProvider;
+  llmProvider: LLMProvider;
+}
+
+/**
+ * The same provider-selection logic `buildSessionManager` uses, exposed
+ * standalone so the Voice Pipeline Test panel (Settings > Developer) can
+ * construct and exercise the *actual currently-configured* providers in
+ * isolation — never a second, drifted copy of this selection logic, and
+ * never fakes.
+ */
+export function selectProviders(settings: VeyraSettings): SelectedProviders {
+  const speechAvailable = isSpeechRecognitionSupported();
+
+  const wakeWordProvider: WakeWordProvider =
+    settings.wakeWordProviderId === "web-speech-wake-word" && speechAvailable
+      ? new WebSpeechWakeWordProvider()
+      : new MockWakeWordProvider();
+
+  const sttProvider: STTProvider =
+    settings.sttProviderId === "web-speech-stt" && speechAvailable
+      ? new WebSpeechSTTProvider()
+      : new MockSTTProvider();
+
+  const ttsProvider: TTSProvider =
+    settings.ttsProviderId === "web-speech-tts"
+      ? new WebSpeechTTSProvider()
+      : new MockTTSProvider();
+
+  const llmProvider: LLMProvider =
+    settings.llmProviderId === "anthropic" && settings.anthropicApiKey
+      ? new AnthropicProvider(settings.anthropicApiKey, settings.anthropicModel)
+      : new MockLLMProvider();
+
+  return { wakeWordProvider, sttProvider, ttsProvider, llmProvider };
+}
 
 export function buildSessionManager(settings: VeyraSettings): SessionManager {
   registerBuiltinSkills();
@@ -38,26 +80,7 @@ export function buildSessionManager(settings: VeyraSettings): SessionManager {
     speechSynthesisAvailable: synthesisAvailable,
   });
 
-  const wakeWordProvider =
-    settings.wakeWordProviderId === "web-speech-wake-word" && speechAvailable
-      ? new WebSpeechWakeWordProvider()
-      : new MockWakeWordProvider();
-
-  const sttProvider =
-    settings.sttProviderId === "web-speech-stt" && speechAvailable
-      ? new WebSpeechSTTProvider()
-      : new MockSTTProvider();
-
-  const ttsProvider =
-    settings.ttsProviderId === "web-speech-tts"
-      ? new WebSpeechTTSProvider()
-      : new MockTTSProvider();
-
-  const llmProvider =
-    settings.llmProviderId === "anthropic" && settings.anthropicApiKey
-      ? new AnthropicProvider(settings.anthropicApiKey, settings.anthropicModel)
-      : new MockLLMProvider();
-
+  const { wakeWordProvider, sttProvider, ttsProvider, llmProvider } = selectProviders(settings);
   const orchestrator = new AIOrchestrator(llmProvider);
 
   return new SessionManager({

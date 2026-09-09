@@ -87,7 +87,12 @@ export interface TTSOptions {
 
 export interface TTSProvider extends VoiceProviderDescriptor {
   listVoices(): Promise<TTSVoiceInfo[]>;
-  /** Speaks `text`, resolving when playback finishes (or is cancelled). */
+  /**
+   * Speaks `text`, resolving when playback finishes or is cancelled
+   * (`cancel()` / barge-in / "Stop Veyra" — those are not failures).
+   * Rejects on a genuine synthesis/playback failure; callers must not
+   * treat rejection as success.
+   */
   speak(text: string, options?: TTSOptions): Promise<void>;
   /** Stops playback immediately (spec: "Stop Veyra" / interruption). */
   cancel(): void;

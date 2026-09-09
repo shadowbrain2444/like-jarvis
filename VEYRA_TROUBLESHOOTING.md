@@ -1,5 +1,39 @@
 # VEYRA Troubleshooting
 
+## The terminal only ever shows `[VEYRA][CORE] backend initialized` — no other logs, ever
+
+You're only seeing the Rust process's own logs. Every `[VEYRA][...]` line
+from the TypeScript side (voice, wake word, STT, AI, TTS, state machine)
+is bridged through `@tauri-apps/plugin-log` into that same terminal (see
+`VEYRA_ARCHITECTURE.md` "Observability"), but that bridge needs both
+halves present: the `log:default` capability permission
+(`src-tauri/capabilities/default.json`) and a fresh `npm install` picking
+up `@tauri-apps/plugin-log` (same class of issue as the
+`plugin-global-shortcut` entry below — check that section if `npm ls
+@tauri-apps/plugin-log` comes back empty). If both are present and you
+still only see the one line, open the WebView DevTools (right-click →
+Inspect, or F12) as a fallback — every log always reaches `console.*`
+there regardless of the bridge.
+
+## Settings → Developer → "Recent activity" says "No activity yet" even though you've been talking to VEYRA
+
+This is two different lists, easy to conflate:
+
+- **"Tool activity (permission audit log)"** is Rust-side and records only
+  Computer Control Engine calls (file/app/window/input operations) that
+  went through the permission guard. It is *correctly* empty until VEYRA
+  actually executes a tool — saying "Veyra" or having a plain conversation
+  never touches it.
+- **"Voice pipeline activity"**, just above it, is the one that records
+  wake/listen/transcript/AI/TTS events (`WAKE_DETECTED`,
+  `LISTENING_STARTED`, `TRANSCRIPT_RECEIVED`, `AI_RESPONSE_STARTED`,
+  `TTS_STARTED`, `COMMAND_COMPLETED`, `ERROR`). If *this* one is empty
+  after speaking, the pipeline genuinely never started — go to "'Veyra'
+  doesn't wake the assistant" below and check which provider is actually
+  active. If you're on an older build without this section, update: this
+  activity feed did not exist before, which is exactly why the audit log
+  being empty was so misleading.
+
 ## "Veyra" doesn't wake the assistant
 
 **First, read the log.** Every run now prints one line that tells you
@@ -39,6 +73,24 @@ activation path that's always available:
   **type your command** into the text box that appears instead of
   speaking it — it goes through `AIOrchestrator`/tool execution/TTS
   exactly like a spoken command would.
+
+**If the log instead says `wake: "web-speech-wake-word"`** (the
+constructor exists) but "Veyra" still isn't detected, look for repeated
+error lines like:
+
+```
+[VEYRA][WAKE] recognition error (1/3): not-allowed — permission denied — check Windows Settings > Privacy & security > Speech (online speech recognition), separate from the microphone permission
+[VEYRA][WAKE] wake engine gave up after 3 consecutive "not-allowed" errors: ...
+```
+
+The constructor existing is necessary but not sufficient — the engine
+still has to successfully talk to a speech-recognition backend. After 3
+consecutive identical errors the wake engine stops silently auto-restarting
+and reports `system.error` instead (see `VEYRA_ARCHITECTURE.md`
+"Observability"). The message names the actual cause — most commonly
+Windows' separate Settings → Privacy & security → Speech ("online speech
+recognition") toggle, which is independent of the microphone permission
+and easy to have off without realizing it.
 
 If you *do* have a genuine microphone/permission problem on top of that
 (separate from the WebView2 gap above):
@@ -88,6 +140,14 @@ so it needs a usable transcript, not just any noise.
   longer installed (OS voice pack changed), reset it to "Auto" — the
   Web Speech-based provider re-resolves automatically to the best
   available female voice.
+- Check the log for `[VEYRA][TTS] Using voice: "..."` — it names the
+  resolved voice and its gender. If it logs a warning that the resolved
+  voice isn't recognized as female, your OS has no female voice installed
+  under the current language; install one (Windows Settings → Time &
+  Language → Speech → Manage voices) or pick a different one in Settings.
+  A real synthesis failure (as opposed to no audio device) now surfaces as
+  `[VEYRA][TTS] Playback failed: ...` and the turn transitions to `ERROR`
+  rather than silently completing as if nothing happened.
 
 ## "Stop Veyra" doesn't stop it, or interruption doesn't work while VEYRA is talking
 

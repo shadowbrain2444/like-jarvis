@@ -159,4 +159,31 @@ describe("SessionManager", () => {
     await session.submitTypedCommand("hello");
     expect(veyraStateMachine.state).toBe("SLEEPING");
   });
+
+  it("a second command works without saying the wake phrase again (task requirement: no re-wake once active)", async () => {
+    llm.nextResponse = "First answer.";
+    wake.simulateWake("veyra");
+    await Promise.resolve();
+    expect(veyraStateMachine.state).toBe("LISTENING");
+
+    // Turn 1 — no second "veyra" here.
+    stt.simulateFinal("first question");
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(veyraStateMachine.state).toBe("SPEAKING");
+    tts.completeSpeaking();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(veyraStateMachine.state).toBe("LISTENING"); // ready for the next command, still active
+
+    // Turn 2 — again, no wake phrase, straight to a new command.
+    llm.nextResponse = "Second answer.";
+    stt.simulateFinal("second question");
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(veyraStateMachine.state).toBe("SPEAKING");
+    expect(tts.lastSpoken?.text).toBe("Second answer.");
+  });
 });

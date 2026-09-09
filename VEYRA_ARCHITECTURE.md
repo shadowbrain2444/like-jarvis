@@ -312,6 +312,71 @@ rolling window per metric for the dev overlay
 persists every sample to `performance_metrics` via the `metric_record`
 command so trends survive a restart.
 
+## Observability: logs reach the terminal, and "no activity" means something specific
+
+Two related gaps existed until they were traced from a real bug report
+(saying "Veyra" produced literally nothing visible anywhere) and fixed:
+
+**Frontend logs are bridged to the Rust process, not just DevTools.**
+`src/logging/logger.ts` calls `console.*` (for the WebView's own DevTools)
+*and* `@tauri-apps/plugin-log`'s `info`/`warn`/`error`/`debug` functions,
+which invoke a Tauri command that routes through the same `log` crate
+sinks `lib.rs`'s `tauri_plugin_log::Builder` configured — `Stdout` by
+default, i.e. the terminal running `npm run tauri dev`. Before this,
+every `[VEYRA][...]` line from the entire TypeScript side (wake word, VAD,
+STT, AI, TTS, state transitions) only ever reached the WebView's own
+DevTools console — invisible to anyone watching just the Rust process
+output, which made a fully-running (or fully-broken) voice pipeline look
+identically silent from the terminal. Requires the `log:default`
+capability permission.
+
+**"Recent activity" was never supposed to show voice events, and now
+there's a feed that does.** `src-tauri`'s `audit_log` table is correctly
+scoped to permission-gated Computer Control Engine calls — it's empty
+until a tool actually runs, which does not include saying "Veyra" or
+having a conversation. `src/core/activityLog.ts` is a separate, frontend,
+in-memory feed (50-entry ring buffer) sourced from the event bus —
+`WAKE_DETECTED`, `LISTENING_STARTED`, `TRANSCRIPT_RECEIVED`,
+`AI_RESPONSE_STARTED`/`AI_RESPONSE_COMPLETED`, `TTS_STARTED`,
+`COMMAND_COMPLETED`, `STOPPED`, `ERROR` — rendered in Settings → Developer
+as "Voice pipeline activity," clearly distinct from "Tool activity
+(permission audit log)" below it.
+
+**Speech-recognition failures are diagnosed, not just logged as a bare
+code.** `isSpeechRecognitionSupported()` only proves the
+`SpeechRecognition` constructor exists — not that it actually works.
+Windows has a separate Settings → Privacy & security → Speech ("online
+speech recognition") toggle, independent of the microphone permission,
+that can make `recognition.start()` fail even when the constructor is
+present. `voice/providers/webSpeechSupport.ts`'s
+`diagnoseSpeechRecognitionError()` maps every `SpeechRecognitionErrorEvent`
+code (`not-allowed`, `service-not-allowed`, `network`, `audio-capture`,
+`no-speech`, `aborted`, ...) to a concrete, actionable message, used by
+both `WebSpeechWakeWordProvider` and `WebSpeechSTTProvider`.
+`WebSpeechWakeWordProvider` also now tracks *consecutive* errors: an
+isolated `no-speech`/`aborted` is routine and it just keeps listening, but
+after `MAX_CONSECUTIVE_ERRORS` (3) in a row it stops the auto-restart loop
+and emits `system.error` rather than silently retrying forever — the
+counter resets only on a genuine recognition result, not merely on the
+engine restarting (restarting after every single error, independent of
+whether recognition is actually working, would otherwise make the
+give-up threshold unreachable — this was a real bug caught by
+`WebSpeechWakeWordProvider.test.ts` while implementing it).
+
+**Voice Pipeline Test panel** (Settings → Developer,
+`src/ui/VoicePipelineTest.tsx`): isolated, real (non-mocked) tests for
+VAD (live mic amplitude), STT (runs the actual configured STT provider
+for 8s and shows partial/final transcript or error), AI (sends a fixed
+prompt through the actual configured `LLMProvider` via a throwaway
+`AIOrchestrator`, never touching the live session's history), and TTS
+(speaks a test phrase through the actual configured `TTSProvider`,
+logging the resolved voice's name and gender so a silent fallback to a
+non-female voice is never invisible). All three construct their provider
+via `bootstrap.ts`'s `selectProviders()` — the exact same selection logic
+the live session uses, not a second copy that could drift. Because they
+share the real microphone/speech engine, running one interrupts an active
+conversation — noted in the panel itself.
+
 ## What's NOT built yet (Phase 16+, per spec section 32)
 
 These have explicit extension points but no implementation in this pass —

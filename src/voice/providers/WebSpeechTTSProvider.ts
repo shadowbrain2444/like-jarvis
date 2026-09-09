@@ -15,6 +15,7 @@
 
 import type { TTSOptions, TTSProvider, TTSVoiceInfo } from "../types";
 import { getSpeechSynthesis } from "./webSpeechSupport";
+import { logger } from "../../logging/logger";
 
 const FEMALE_VOICE_HINTS = [
   "female",
@@ -97,22 +98,44 @@ export class WebSpeechTTSProvider implements TTSProvider {
   }
 
   async speak(text: string, options: TTSOptions = {}): Promise<void> {
+    logger.info("TTS", "Starting synthesis");
     if (!this.synth) {
-      throw new Error("[VEYRA][TTS] speechSynthesis is not available in this runtime");
+      const message = "speechSynthesis is not available in this runtime";
+      logger.error("TTS", message);
+      throw new Error(`[VEYRA][TTS] ${message}`);
     }
     this.cancel(); // barge-in: a new utterance always preempts the current one
 
     const utterance = new SpeechSynthesisUtterance(text);
-    utterance.voice = (await this.resolveVoice(options.voiceId)) ?? null;
+    const resolvedVoice = await this.resolveVoice(options.voiceId);
+    utterance.voice = resolvedVoice ?? null;
     utterance.rate = options.rate ?? 1.0;
     utterance.volume = options.volume ?? 1.0;
     utterance.pitch = options.pitch ?? 1.05; // a hair brighter, per VEYRA's voice identity
 
+    if (resolvedVoice) {
+      const gender = guessGender(resolvedVoice);
+      logger.info("TTS", `Using voice: "${resolvedVoice.name}" (${resolvedVoice.lang}, ${gender})`);
+      if (gender !== "female") {
+        // VEYRA's identity requires a female voice by default (spec
+        // section 22) — this is not fatal (some systems genuinely have no
+        // female voice installed), but it must never be silent.
+        logger.warn(
+          "TTS",
+          `resolved voice "${resolvedVoice.name}" is not recognized as female — ` +
+            "check installed OS voices, or set one explicitly in Settings > Voice"
+        );
+      }
+    } else {
+      logger.warn("TTS", "no voice resolved — speechSynthesis has no installed voices");
+    }
+
     this.currentUtterance = utterance;
 
-    return new Promise<void>((resolve) => {
+    return new Promise<void>((resolve, reject) => {
       utterance.onstart = () => {
         this._isSpeaking = true;
+        logger.info("TTS", "Playback started");
       };
       utterance.onboundary = () => {
         this.pulse();
@@ -121,10 +144,26 @@ export class WebSpeechTTSProvider implements TTSProvider {
         this._isSpeaking = false;
         this.stopDecay();
         if (this.currentUtterance === utterance) this.currentUtterance = null;
+      };
+      utterance.onend = () => {
+        finish();
+        logger.info("TTS", "Playback completed");
         resolve();
       };
-      utterance.onend = finish;
-      utterance.onerror = finish;
+      utterance.onerror = (event) => {
+        finish();
+        // "canceled"/"interrupted" are expected on barge-in/Stop Veyra —
+        // resolved normally, not reported as a failure. Anything else
+        // (e.g. "synthesis-failed", "voice-unavailable") is real and must
+        // not be swallowed as if playback had simply completed.
+        if (event.error === "canceled" || event.error === "interrupted") {
+          logger.info("TTS", `Playback cancelled (${event.error})`);
+          resolve();
+        } else {
+          logger.error("TTS", `Playback failed: ${event.error}`);
+          reject(new Error(`[VEYRA][TTS] playback failed: ${event.error}`));
+        }
+      };
 
       this.synth!.speak(utterance);
     });

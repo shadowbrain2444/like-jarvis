@@ -10,6 +10,7 @@
  */
 
 import type { VADProvider } from "../types";
+import { logger } from "../../logging/logger";
 
 export interface EnergyVADOptions {
   /** RMS above this is "speech". Mic-dependent; 0.02 is a reasonable indoor default. */
@@ -46,10 +47,17 @@ export class EnergyVADProvider implements VADProvider {
       this.lastAboveThresholdAt = now;
       if (!this.speaking) {
         this.speaking = true;
+        // NOTE: this fires on ANY sufficiently loud sound while frames are
+        // flowing (confirming the mic->VAD wiring is alive), regardless of
+        // assistant state — SessionManager only *acts* on it during
+        // SPEAKING (barge-in). Seeing this log while SLEEPING/LISTENING is
+        // expected and does not by itself mean nothing is happening.
+        logger.info("VAD", `Speech detected (rms=${rms.toFixed(3)})`);
         this.speechStartCallbacks.forEach((cb) => cb());
       }
     } else if (this.speaking && now - this.lastAboveThresholdAt >= this.hangoverMs) {
       this.speaking = false;
+      logger.info("VAD", "Speech ended");
       this.speechEndCallbacks.forEach((cb) => cb());
     }
   }

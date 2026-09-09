@@ -7,7 +7,8 @@
  */
 
 import type { STTPartialResult, STTProvider } from "../types";
-import { getSpeechRecognitionCtor } from "./webSpeechSupport";
+import { diagnoseSpeechRecognitionError, getSpeechRecognitionCtor } from "./webSpeechSupport";
+import { logger } from "../../logging/logger";
 
 export class WebSpeechSTTProvider implements STTProvider {
   readonly id = "web-speech-stt";
@@ -26,9 +27,11 @@ export class WebSpeechSTTProvider implements STTProvider {
   }
 
   async start(): Promise<void> {
+    logger.info("STT", "Starting streaming transcription");
     const Ctor = getSpeechRecognitionCtor();
     if (!Ctor) {
       const message = "speech recognition is not available in this runtime";
+      logger.error("STT", message);
       this.errorCallbacks.forEach((cb) => cb(message));
       throw new Error(`[VEYRA][STT] ${message}`);
     }
@@ -51,21 +54,26 @@ export class WebSpeechSTTProvider implements STTProvider {
         }
       }
       if (interimText) {
+        logger.info("STT", `Partial transcript: "${interimText}"`);
         this.partialCallbacks.forEach((cb) => cb({ text: interimText, isFinal: false }));
       }
       if (finalText) {
+        logger.info("STT", `Final transcript: "${finalText.trim()}"`);
         this.partialCallbacks.forEach((cb) => cb({ text: finalText, isFinal: true }));
         this.finalCallbacks.forEach((cb) => cb(finalText.trim()));
       }
     };
     recognition.onerror = (event) => {
+      logger.error("STT", `recognition error: ${event.error} — ${diagnoseSpeechRecognitionError(event.error)}`);
       this.errorCallbacks.forEach((cb) => cb(event.error));
     };
     recognition.onstart = () => {
       this._isListening = true;
+      logger.info("STT", "Recognition stream started");
     };
     recognition.onend = () => {
       this._isListening = false;
+      logger.info("STT", "Recognition stream ended");
     };
     recognition.start();
   }

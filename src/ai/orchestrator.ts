@@ -13,6 +13,7 @@
  */
 
 import { eventBus } from "../core/eventBus";
+import { logger } from "../logging/logger";
 import type { ChatMessage, LLMProvider } from "./types";
 import { toolRegistry } from "./toolRegistry";
 
@@ -56,6 +57,10 @@ export class AIOrchestrator {
     this.history.push({ role: "user", content: userText });
     this.trimHistory();
 
+    logger.info(
+      "AI",
+      `Request started (provider: "${this.llmProvider.id}", ${this.llmProvider.locality}${this.llmProvider.requiresApiKey ? ", requires API key" : ""})`
+    );
     eventBus.emit("llm.started", { requestId });
     const start = performance.now();
     let fullText = "";
@@ -66,6 +71,7 @@ export class AIOrchestrator {
       toolRegistry.list(),
       {
         onFirstToken: (latencyMs) => {
+          logger.info("AI", `First response token received (${latencyMs.toFixed(0)}ms)`);
           eventBus.emit("llm.first_token", { requestId, latencyMs });
           eventBus.emit("performance.metric", { metric: "llm.first_token_ms", valueMs: latencyMs });
         },
@@ -76,11 +82,13 @@ export class AIOrchestrator {
         onToolUse: (name, input) => toolRegistry.execute(name, input),
         onComplete: (text, latencyMs) => {
           fullText = text;
+          logger.info("AI", `Response completed (${latencyMs.toFixed(0)}ms): "${text}"`);
           eventBus.emit("llm.completed", { requestId, text, latencyMs });
           eventBus.emit("performance.metric", { metric: "llm.total_ms", valueMs: latencyMs });
         },
         onError: (message) => {
           errored = message;
+          logger.error("AI", `Request failed: ${message}`);
           eventBus.emit("llm.failed", { requestId, error: message });
           eventBus.emit("system.error", { scope: "llm", message, recoverable: true });
         },

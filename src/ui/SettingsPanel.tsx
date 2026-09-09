@@ -15,6 +15,8 @@ import type { TTSVoiceInfo } from "../voice/types";
 import type { AudioDeviceInfo } from "../voice/types";
 import type { AuditEntry, PermissionScope } from "../core/backendTypes";
 import { MicDiagnostics } from "./MicDiagnostics";
+import { VoicePipelineTest } from "./VoicePipelineTest";
+import { useActivityLog } from "../core/activityLog";
 
 const DESTRUCTIVE_TOOLS = [
   "files.delete",
@@ -38,6 +40,7 @@ export function SettingsPanel({ onClose }: { onClose: () => void }) {
   const [devices, setDevices] = useState<AudioDeviceInfo[]>([]);
   const [permissions, setPermissions] = useState<Record<string, PermissionScope>>({});
   const [audit, setAudit] = useState<AuditEntry[]>([]);
+  const pipelineActivity = useActivityLog();
 
   const ttsForVoiceList = useMemo(() => new WebSpeechTTSProvider(), []);
 
@@ -234,9 +237,36 @@ export function SettingsPanel({ onClose }: { onClose: () => void }) {
         </div>
 
         <div className="veyra-field">
-          <label className="veyra-field__label">Recent activity (audit log)</label>
+          <label className="veyra-field__label">Voice pipeline test</label>
+          <VoicePipelineTest />
+        </div>
+
+        <div className="veyra-field">
+          <label className="veyra-field__label">
+            Voice pipeline activity (wake / listen / transcript / AI / TTS)
+          </label>
           <ul className="veyra-audit-list">
-            {audit.length === 0 && <li>No activity yet.</li>}
+            {pipelineActivity.length === 0 && (
+              <li>No activity yet — say "Veyra", click Activate, or run a test above.</li>
+            )}
+            {pipelineActivity.map((entry) => (
+              <li key={entry.id}>
+                <span>
+                  {entry.kind}
+                  {entry.detail ? `: ${entry.detail}` : ""}
+                </span>
+                <span className={entry.kind === "ERROR" ? "error" : "ok"}>
+                  {new Date(entry.at).toLocaleTimeString()}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <div className="veyra-field">
+          <label className="veyra-field__label">Tool activity (permission audit log)</label>
+          <ul className="veyra-audit-list">
+            {audit.length === 0 && <li>No tool calls yet — this only records computer-control actions.</li>}
             {audit.map((entry) => (
               <li key={entry.id}>
                 <span>
